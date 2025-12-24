@@ -1,0 +1,832 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Library Network</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Inter', 'sans-serif'],
+              handwriting: ['Caveat', 'cursive'],
+            },
+            colors: {
+              paper: '#fdfbf7',
+            },
+            animation: {
+                'fade-in': 'fadeIn 0.3s ease-out',
+                'slide-in': 'slideIn 0.3s ease-out',
+            },
+            keyframes: {
+                fadeIn: {
+                    '0%': { opacity: '0' },
+                    '100%': { opacity: '1' },
+                },
+                slideIn: {
+                    '0%': { transform: 'translateY(100%)', opacity: '0' },
+                    '100%': { transform: 'translateY(0)', opacity: '1' },
+                }
+            }
+          }
+        }
+      }
+    </script>
+    <style>
+      body {
+        transition: background-color 0.3s, color 0.3s;
+      }
+      /* Custom Scrollbar */
+      ::-webkit-scrollbar {
+        width: 8px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #555;
+        border-radius: 4px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #000;
+      }
+      .dark ::-webkit-scrollbar-thumb {
+        background: #888;
+      }
+      .dark ::-webkit-scrollbar-thumb:hover {
+        background: #fff;
+      }
+      .hidden {
+          display: none !important;
+      }
+    </style>
+<script type="importmap">
+{
+  "imports": {
+    "lucide-react": "https://esm.sh/lucide-react@^0.562.0",
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "react": "https://esm.sh/react@^19.2.3",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "socket.io-client": "https://esm.sh/socket.io-client@^4.8.3"
+  }
+}
+</script>
+</head>
+<body class="bg-paper text-zinc-900 dark:bg-zinc-950 dark:text-zinc-50 antialiased overflow-x-hidden">
+    <div id="app" class="min-h-screen flex flex-col relative transition-colors duration-300
+    </div>
+    <div id="toast-container" class="fixed bottom-4 right-4 z-[100] flex flex-col gap-2 pointer-events-none"></div>
+    <script>
+        const Role = { STUDENT: 'STUDENT', TEACHER: 'TEACHER', LIBRARIAN: 'LIBRARIAN' };
+        const Branch = { CSE: 'CSE', ME: 'ME', CIVIL: 'CIVIL', AERO: 'AERO', ECE: 'ECE', ISE: 'ISE' };
+        const INITIAL_BOOKS = [
+            { id: 'ACC001', title: 'Fluid Mechanics', author: 'Frank M. White', category: 'Mechanics', department: Branch.ME, stock: 18 },
+            { id: 'ACC002', title: 'Digital Logic', author: 'Morris Mano', category: 'Electronics', department: Branch.ECE, stock: 0 },
+            { id: 'ACC003', title: 'Structural Analysis', author: 'R.C. Hibbeler', category: 'Structures', department: Branch.CIVIL, stock: 23 },
+            { id: 'ACC004', title: 'Aerodynamics', author: 'John D. Anderson', category: 'Aero Dynamics', department: Branch.AERO, stock: 19 },
+            { id: 'ACC005', title: 'Operating Systems Concepts', author: 'Silberschatz', category: 'OS', department: Branch.CSE, stock: 12 },
+            { id: 'ACC006', title: 'Database System Concepts', author: 'Korth', category: 'Databases', department: Branch.CSE, stock: 16 },
+            { id: 'ACC007', title: 'The Pragmatic Programmer', author: 'Andrew Hunt', category: 'Programming', department: Branch.CSE, stock: 3 },
+            { id: 'ACC008', title: 'Design Patterns', author: 'Gang of Four', category: 'Design', department: Branch.CSE, stock: 1 },
+            { id: 'ACC011', title: 'C++: The Complete Reference', author: 'Herbert Schildt', category: 'Programming', department: Branch.CSE, publisher: 'Tata Mc Graw Hill', price: 495, stock: 17 },
+            { id: 'ACC012', title: 'Introduction to Algorithms', author: 'Thomas H Cormen', category: 'Algorithms', department: Branch.CSE, publisher: 'PHI Learning Pvt. Ltd.', price: 425, stock: 41 }, 
+        ];
+
+        const MOCK_USERS = [
+            { id: 'LIB001', name: 'Admin Librarian', role: Role.LIBRARIAN, password: 'PASS1234' },
+            { id: 'TEA001', name: 'Prof. Nithesh', role: Role.TEACHER, branch: Branch.CSE, password: 'PASS1234' },
+            { id: '1CR19CS001', name: 'Nived Shaji', role: Role.STUDENT, branch: Branch.CSE, semester: 3, year: 2, email: 'nived@gcem.edu', password: 'PASS1234' },
+            { id: '1CR19ME002', name: 'R Mazhar Abbas', role: Role.STUDENT, branch: Branch.ME, semester: 1, year: 1, email: 'rmaz@gcem.edu', password: 'PASS1234' },
+        ];
+
+        const MOCK_REFERRALS = [
+            { id: 'r1', bookId: 'ACC007', teacherId: 'TEA001', targetBranch: Branch.CSE, targetSemester: 3, createdAt: Date.now() },
+            { id: 'r2', bookId: 'ACC002', teacherId: 'TEA001', targetBranch: Branch.CSE, targetSemester: 3, createdAt: Date.now() },
+        ];
+        const AppState = {
+            currentUser: null,
+            users: [],
+            books: [],
+            referrals: [],
+            note: { content: '', lastUpdated: Date.now() },
+            messages: [],
+            darkMode: false,
+            socket: null,
+            view: 'LOGIN',
+            modals: {
+                referral: false,
+                savedBooks: false,
+                social: false,
+                jot: false
+            },
+            tempData: {}
+        };
+        const LibraryApp = {
+            init: function() {
+                this.loadData();
+                try {
+                    AppState.socket = io('http://localhost:3001', { transports: ['websocket'], autoConnect: true });
+                    AppState.socket.on('connect', () => console.log('Socket connected'));
+                    AppState.socket.on('receive_message', (msg) => {
+                        if(!AppState.messages.some(m => m.id === msg.id)) {
+                            AppState.messages.push(msg);
+                            this.persist('lms_messages', AppState.messages);
+                            if(AppState.modals.social) this.renderSocialContent();
+                        }
+                    });
+                } catch(e) { console.log('Socket not available'); }
+                document.addEventListener('contextmenu', (e) => e.preventDefault
+                this.render();
+            },
+
+            loadData: function() {
+                AppState.users = JSON.parse(localStorage.getItem('lms_users')) || MOCK_USERS;
+                AppState.books = JSON.parse(localStorage.getItem('lms_books')) || INITIAL_BOOKS;
+                AppState.referrals = JSON.parse(localStorage.getItem('lms_referrals')) || MOCK_REFERRALS;
+                AppState.note = JSON.parse(localStorage.getItem('lms_jot')) || { content: '', lastUpdated: Date.now() };
+                AppState.messages = JSON.parse(localStorage.getItem('lms_messages')) || [];
+                MOCK_USERS.forEach(mock => {
+                    if(!AppState.users.some(u => u.id === mock.id)) AppState.users.push(mock);
+                });
+            },
+
+            persist: function(key, data) {
+                localStorage.setItem(key, JSON.stringify(data));
+            },
+
+            updateState: function(key, data) {
+                AppState[key] = data;
+                this.persist(`lms_${key}`, data);
+            },
+
+            showToast: function(message, type = 'success') {
+                const container = document.getElementById('toast-container');
+                const toast = document.createElement('div');
+                toast.className = `pointer-events-auto flex items-center gap-3 px-4 py-3 border border-black dark:border-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:shadow-[4px_4px_0px_0px_rgba(255,255,255,1)] transform transition-all duration-300 animate-slide-in ${type === 'error' ? 'bg-black text-white dark:bg-white dark:text-black' : 'bg-white text-black dark:bg-black dark:text-white'}`;
+                toast.innerHTML = `<span class="text-sm font-medium tracking-wide">${message}</span>`;
+                container.appendChild(toast);
+                setTimeout(() => toast.remove(), 3000);
+            },
+            login: function(id, password) {
+                const user = AppState.users.find(u => u.id === id);
+                if (user) {
+                    if (user.password && user.password !== password) {
+                        this.showToast('Invalid credentials', 'error');
+                        return;
+                    }
+                    AppState.currentUser = user;
+                    AppState.view = user.role;
+                    if(AppState.socket) AppState.socket.emit('join_room', id);
+                    this.showToast(`Welcome back, ${user.name}`);
+                    this.render();
+                } else {
+                    this.showToast('User not found', 'error');
+                }
+            },
+
+            logout: function() {
+                if(AppState.socket && AppState.currentUser) AppState.socket.emit('leave_room', AppState.currentUser.id);
+                AppState.currentUser = null;
+                AppState.view = 'LOGIN';
+                this.showToast('Logged out');
+                this.render();
+            },
+
+            toggleDarkMode: function() {
+                AppState.darkMode = !AppState.darkMode;
+                document.documentElement.classList.toggle('dark', AppState.darkMode);
+            },
+            addUser: function(e) {
+                e.preventDefault();
+                const form = e.target;
+                const role = form.role.value;
+                const id = form.userid.value.toUpperCase();
+                
+                if (AppState.users.some(u => u.id === id)) {
+                    alert('User ID already exists');
+                    return;
+                }
+
+                if (role === Role.STUDENT && !/^[A-Z0-9]{8,10}$/.test(id)) {
+                    alert('Invalid Student USN Format');
+                    return;
+                }
+
+                const newUser = {
+                    id,
+                    name: form.username.value,
+                    role,
+                    branch: (role !== Role.LIBRARIAN) ? form.branch.value : undefined,
+                    semester: (role === Role.STUDENT) ? parseInt(form.semester.value) : undefined,
+                    year: (role === Role.STUDENT) ? parseInt(form.year.value) : undefined,
+                    email: form.email.value,
+                    phoneNumber: form.phone.value,
+                    password: form.password.value || 'PASS1234'
+                };
+
+                AppState.users.push(newUser);
+                this.updateState('users', AppState.users);
+                this.showToast('User added');
+                this.renderLibrarian(); // Re-render list
+                form.reset();
+            },
+
+            deleteUser: function(id) {
+                if(confirm('Delete User?')) {
+                    AppState.users = AppState.users.filter(u => u.id !== id);
+                    this.updateState('users', AppState.users);
+                    this.renderLibrarian();
+                }
+            },
+
+            addBook: function(e) {
+                e.preventDefault();
+                const form = e.target;
+                const id = form.bookid.value;
+                
+                if (AppState.books.some(b => b.id === id)) {
+                    alert('Book ID exists');
+                    return;
+                }
+
+                const newBook = {
+                    id,
+                    title: form.title.value,
+                    author: form.author.value,
+                    category: form.category.value,
+                    department: form.department.value || undefined,
+                    stock: parseInt(form.stock.value) || 0,
+                    publisher: form.publisher.value,
+                    edition: form.edition.value,
+                    isbn: form.isbn.value,
+                    price: form.price.value ? Number(form.price.value) : undefined
+                };
+
+                AppState.books.push(newBook);
+                this.updateState('books', AppState.books);
+                this.showToast('Book added');
+                this.renderLibrarian();
+                form.reset();
+            },
+
+            deleteBook: function(id) {
+                if(confirm('Delete Book?')) {
+                    AppState.books = AppState.books.filter(b => b.id !== id);
+                    this.updateState('books', AppState.books);
+                    this.renderLibrarian();
+                }
+            },
+            openReferralModal: function(bookId) {
+                const book = AppState.books.find(b => b.id === bookId);
+                
+                // STOCK CHECK (Requested Feature)
+                if (book.stock <= 0) {
+                    this.showToast(`"${book.title}" is out of stock.`, 'error');
+                    return;
+                }
+
+                AppState.tempData.selectedBook = book;
+                AppState.modals.referral = true;
+                this.renderModalContainer();
+            },
+
+            closeReferralModal: function() {
+                AppState.modals.referral = false;
+                AppState.tempData.selectedBook = null;
+                this.renderModalContainer();
+            },
+
+            submitReferral: function() {
+                const branch = document.getElementById('ref-branch').value;
+                const sem = parseInt(document.getElementById('ref-sem').value);
+                const book = AppState.tempData.selectedBook;
+                
+                AppState.referrals.push({
+                    id: Math.random().toString(36).substr(2, 9),
+                    bookId: book.id,
+                    teacherId: AppState.currentUser.id,
+                    targetBranch: branch,
+                    targetSemester: sem,
+                    createdAt: Date.now()
+                });
+                
+                this.updateState('referrals', AppState.referrals);
+                this.showToast('Referral Added');
+                this.closeReferralModal();
+                this.renderTeacher(); 
+            },
+
+            deleteReferral: function(id) {
+                AppState.referrals = AppState.referrals.filter(r => r.id !== id);
+                this.updateState('referrals', AppState.referrals);
+                this.renderTeacher();
+            },
+            toggleSavedBook: function(bookId) {
+                const user = AppState.currentUser;
+                let saved = user.savedBookIds || [];
+                if (saved.includes(bookId)) {
+                    saved = saved.filter(id => id !== bookId);
+                    this.showToast('Removed from saved');
+                } else {
+                    saved.push(bookId);
+                    this.showToast('Added to saved');
+                }
+                user.savedBookIds = saved;
+                AppState.users = AppState.users.map(u => u.id === user.id ? user : u);
+                this.updateState('users', AppState.users);
+                this.renderStudent(); 
+            },
+            toggleSidebar: function(type) {
+                AppState.modals[type] = !AppState.modals[type];
+                if(type === 'social') this.renderSocialSidebar();
+                if(type === 'jot') this.renderJotSidebar();
+            },
+
+            saveNote: function(content) {
+                AppState.note = { content, lastUpdated: Date.now() };
+                this.updateState('jot', AppState.note);
+                const status = document.getElementById('jot-status');
+                if(status) status.textContent = 'Saved';
+            },
+
+            sendMessage: function() {
+                const input = document.getElementById('chat-input');
+                const content = input.value.trim();
+                if(!content) return;
+
+                const activeTab = document.getElementById('chat-tab-active').dataset.tab; 
+                const channelId = 'global'; 
+
+                const msg = {
+                    id: Math.random().toString(36).substr(2, 9),
+                    senderId: AppState.currentUser.id,
+                    senderName: AppState.currentUser.name,
+                    content,
+                    channelId,
+                    timestamp: Date.now()
+                };
+
+                AppState.messages.push(msg);
+                this.updateState('messages', AppState.messages);
+                if(AppState.socket) AppState.socket.emit('send_message', msg);
+                
+                input.value = '';
+                this.renderSocialContent();
+            },
+            render: function() {
+                const app = document.getElementById('app');
+                if (!AppState.currentUser) {
+                    app.innerHTML = this.htmlLogin();
+                } else {
+                    app.innerHTML = this.htmlLayout(
+                        AppState.currentUser.role === Role.LIBRARIAN ? this.htmlLibrarian() :
+                        AppState.currentUser.role === Role.TEACHER ? this.htmlTeacher() : 
+                        this.htmlStudent()
+                    );
+                    this.renderModalContainer();
+                    this.renderSocialSidebar();
+                    this.renderJotSidebar();
+                }
+                lucide.createIcons();
+            },
+
+            htmlLogin: function() {
+                return `
+                <div class="flex min-h-[80vh] items-center justify-center animate-fade-in p-4">
+                    <div class="w-full max-w-md bg-white dark:bg-zinc-900 border border-black dark:border-white shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] dark:shadow-[8px_8px_0px_0px_rgba(255,255,255,1)] p-8">
+                        <h1 class="text-3xl font-bold mb-2 tracking-tight">Library Network</h1>
+                        <p class="text-zinc-500 dark:text-zinc-400 mb-8">Enter your credentials.</p>
+                        <form onsubmit="event.preventDefault(); LibraryApp.login(this.usn.value.toUpperCase().trim(), this.password.value)">
+                            <div class="mb-6">
+                                <label class="block text-sm font-medium mb-2 uppercase">USN / ID</label>
+                                <input name="usn" type="text" placeholder="e.g. 1CR19CS001" class="w-full bg-transparent border-b-2 border-zinc-300 dark:border-zinc-700 focus:border-black dark:focus:border-white outline-none py-2 text-lg">
+                            </div>
+                            <div class="mb-6">
+                                <label class="block text-sm font-medium mb-2 uppercase">Password</label>
+                                <input name="password" type="password" class="w-full bg-transparent border-b-2 border-zinc-300 dark:border-zinc-700 focus:border-black dark:focus:border-white outline-none py-2 text-lg">
+                            </div>
+                            <button type="submit" class="w-full bg-black text-white dark:bg-white dark:text-black py-3 font-bold uppercase hover:opacity-80">Login</button>
+                        </form>
+                        <div class="mt-8 text-xs text-zinc-400 pt-4 border-t border-zinc-200 dark:border-zinc-800">
+                             Demo: Admin (LIB001/PASS1234), Teacher (TEA001/PASS1234), Student (1CR19CS001/PASS1234)
+                        </div>
+                    </div>
+                </div>`;
+            },
+
+            htmlLayout: function(content) {
+                return `
+                <nav class="border-b border-black dark:border-white sticky top-0 z-20 bg-paper/90 dark:bg-zinc-950/90 backdrop-blur-sm">
+                    <div class="max-w-7xl mx-auto px-4 h-16 flex justify-between items-center">
+                        <div class="flex items-center gap-2">
+                            <i data-lucide="book-open" class="h-6 w-6"></i>
+                            <span class="font-bold text-xl tracking-tighter">Library Network</span>
+                        </div>
+                        <div class="flex items-center gap-4">
+                            <div class="hidden md:flex flex-col items-end">
+                                <span class="text-sm font-semibold">${AppState.currentUser.name}</span>
+                                <span class="text-xs text-zinc-500 uppercase">${AppState.currentUser.role}</span>
+                            </div>
+                            <button onclick="LibraryApp.toggleDarkMode()" class="p-2 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded-full">
+                                <i data-lucide="${AppState.darkMode ? 'sun' : 'moon'}" class="h-5 w-5"></i>
+                            </button>
+                            <button onclick="LibraryApp.logout()" class="flex items-center gap-2 text-sm font-medium hover:text-red-600">
+                                <i data-lucide="log-out" class="h-5 w-5"></i>
+                            </button>
+                        </div>
+                    </div>
+                </nav>
+                <main class="flex-1 max-w-7xl w-full mx-auto px-4 py-8 animate-fade-in">
+                    ${content}
+                </main>
+                <!-- Sidebars Containers -->
+                <div id="sidebar-mount"></div>
+                `;
+            },
+            renderLibrarian: function() {
+                setTimeout(() => this.filterTable('users'), 0);
+                this.renderLibrarianHTML();
+            },
+            
+            renderLibrarianHTML: function() {
+                 const isUserTab = true;
+            },
+
+            htmlLibrarian: function() {
+                return `
+                <div class="space-y-8">
+                    <header class="flex flex-col md:flex-row justify-between gap-4 border-b border-black dark:border-white pb-6">
+                        <div>
+                            <h1 class="text-4xl font-light tracking-tighter">Administration</h1>
+                            <p class="text-zinc-500 mt-2">Manage library access and inventory.</p>
+                        </div>
+                        <div class="flex bg-zinc-100 dark:bg-zinc-800 p-1 rounded-lg">
+                            <button onclick="document.getElementById('sec-users').classList.remove('hidden'); document.getElementById('sec-books').classList.add('hidden');" class="px-4 py-2 text-sm font-bold rounded-md hover:bg-white dark:hover:bg-black shadow-sm">Users</button>
+                            <button onclick="document.getElementById('sec-users').classList.add('hidden'); document.getElementById('sec-books').classList.remove('hidden');" class="px-4 py-2 text-sm font-bold rounded-md hover:bg-white dark:hover:bg-black shadow-sm">Books</button>
+                        </div>
+                    </header>
+
+                    <!-- USERS SECTION -->
+                    <div id="sec-users" class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                        <div class="lg:col-span-1 bg-zinc-50 dark:bg-zinc-900 p-6 border border-zinc-200 dark:border-zinc-800 h-fit sticky top-24">
+                            <h3 class="text-lg font-bold mb-4 flex items-center gap-2"><i data-lucide="user-plus" size="18"></i> Add User</h3>
+                            <form onsubmit="LibraryApp.addUser(event)" class="space-y-4">
+                                <select name="role" class="w-full p-2 bg-white dark:bg-black border border-zinc-300 dark:border-zinc-700" onchange="this.value === 'STUDENT' ? document.getElementById('student-fields').classList.remove('hidden') : document.getElementById('student-fields').classList.add('hidden')">
+                                    <option value="STUDENT">STUDENT</option>
+                                    <option value="TEACHER">TEACHER</option>
+                                    <option value="LIBRARIAN">LIBRARIAN</option>
+                                </select>
+                                <input name="userid" placeholder="ID / USN *" required class="w-full p-2 bg-white dark:bg-black border border-zinc-300 dark:border-zinc-700 font-mono uppercase">
+                                <input name="username" placeholder="Full Name *" required class="w-full p-2 bg-white dark:bg-black border border-zinc-300 dark:border-zinc-700">
+                                <div id="student-fields" class="">
+                                    <div class="grid grid-cols-2 gap-2 mb-2">
+                                        <select name="branch" class="w-full p-2 bg-white dark:bg-black border border-zinc-300 dark:border-zinc-700">
+                                            ${Object.values(Branch).map(b => `<option value="${b}">${b}</option>`).join('')}
+                                        </select>
+                                        <input name="semester" type="number" placeholder="Sem" value="1" class="w-full p-2 bg-white dark:bg-black border border-zinc-300 dark:border-zinc-700">
+                                    </div>
+                                    <input name="year" type="number" placeholder="Year" value="1" class="w-full p-2 bg-white dark:bg-black border border-zinc-300 dark:border-zinc-700">
+                                </div>
+                                <input name="email" placeholder="Email" class="w-full p-2 bg-white dark:bg-black border border-zinc-300 dark:border-zinc-700">
+                                <input name="phone" placeholder="Phone" class="w-full p-2 bg-white dark:bg-black border border-zinc-300 dark:border-zinc-700">
+                                <input name="password" placeholder="Password (Default: PASS1234)" class="w-full p-2 bg-white dark:bg-black border border-zinc-300 dark:border-zinc-700">
+                                <button class="w-full bg-black text-white dark:bg-white dark:text-black py-3 font-bold uppercase">Create User</button>
+                            </form>
+                        </div>
+                        <div class="lg:col-span-2">
+                            <input onkeyup="LibraryApp.filterTable('users', this.value)" placeholder="Search users..." class="w-full p-2 mb-4 bg-white dark:bg-black border border-zinc-300 dark:border-zinc-700">
+                            <div class="overflow-x-auto border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-black max-h-[600px] overflow-y-auto">
+                                <table class="w-full text-left text-sm" id="table-users">
+                                    <thead class="bg-zinc-100 dark:bg-zinc-900 sticky top-0"><tr><th class="p-4">ID</th><th class="p-4">Name</th><th class="p-4 text-right">Action</th></tr></thead>
+                                    <tbody>
+                                        ${AppState.users.map(u => `
+                                            <tr class="border-b border-zinc-100 dark:border-zinc-800" data-search="${u.name} ${u.id}">
+                                                <td class="p-4 font-mono">${u.id}</td>
+                                                <td class="p-4"><b>${u.name}</b><br><span class="text-xs text-zinc-500">${u.role}</span></td>
+                                                <td class="p-4 text-right">
+                                                    ${u.role !== 'LIBRARIAN' ? `<button onclick="LibraryApp.deleteUser('${u.id}')" class="text-red-500 hover:bg-red-50 p-2 rounded"><i data-lucide="trash-2" class="w-4 h-4"></i></button>` : ''}
+                                                </td>
+                                            </tr>
+                                        `).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- BOOKS SECTION -->
+                    <div id="sec-books" class="hidden grid grid-cols-1 lg:grid-cols-3 gap-8">
+                         <div class="lg:col-span-1 bg-zinc-50 dark:bg-zinc-900 p-6 border border-zinc-200 dark:border-zinc-800 h-fit sticky top-24">
+                            <h3 class="text-lg font-bold mb-4 flex items-center gap-2"><i data-lucide="book-plus" size="18"></i> Add Book</h3>
+                            <form onsubmit="LibraryApp.addBook(event)" class="space-y-4">
+                                <input name="bookid" placeholder="Access No *" required class="w-full p-2 bg-white dark:bg-black border border-zinc-300 dark:border-zinc-700 font-mono">
+                                <input name="title" placeholder="Title *" required class="w-full p-2 bg-white dark:bg-black border border-zinc-300 dark:border-zinc-700">
+                                <input name="author" placeholder="Author *" required class="w-full p-2 bg-white dark:bg-black border border-zinc-300 dark:border-zinc-700">
+                                <input name="category" placeholder="Subject *" required class="w-full p-2 bg-white dark:bg-black border border-zinc-300 dark:border-zinc-700">
+                                <div class="grid grid-cols-2 gap-2">
+                                     <select name="department" class="w-full p-2 bg-white dark:bg-black border border-zinc-300 dark:border-zinc-700">
+                                            <option value="">General</option>
+                                            ${Object.values(Branch).map(b => `<option value="${b}">${b}</option>`).join('')}
+                                     </select>
+                                     <input name="stock" type="number" placeholder="Stock" required class="w-full p-2 bg-white dark:bg-black border border-zinc-300 dark:border-zinc-700">
+                                </div>
+                                <input name="publisher" placeholder="Publisher" class="w-full p-2 bg-white dark:bg-black border border-zinc-300 dark:border-zinc-700">
+                                <input name="edition" placeholder="Edition" class="w-full p-2 bg-white dark:bg-black border border-zinc-300 dark:border-zinc-700">
+                                <input name="isbn" placeholder="ISBN" class="w-full p-2 bg-white dark:bg-black border border-zinc-300 dark:border-zinc-700">
+                                <input name="price" type="number" placeholder="Price" class="w-full p-2 bg-white dark:bg-black border border-zinc-300 dark:border-zinc-700">
+                                <button class="w-full bg-black text-white dark:bg-white dark:text-black py-3 font-bold uppercase">Add Book</button>
+                            </form>
+                        </div>
+                        <div class="lg:col-span-2">
+                            <input onkeyup="LibraryApp.filterTable('books', this.value)" placeholder="Search books..." class="w-full p-2 mb-4 bg-white dark:bg-black border border-zinc-300 dark:border-zinc-700">
+                            <div class="overflow-x-auto border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-black max-h-[600px] overflow-y-auto">
+                                <table class="w-full text-left text-sm" id="table-books">
+                                    <thead class="bg-zinc-100 dark:bg-zinc-900 sticky top-0"><tr><th class="p-4">ACC No</th><th class="p-4">Title</th><th class="p-4">Stock</th><th class="p-4 text-right">Action</th></tr></thead>
+                                    <tbody>
+                                        ${AppState.books.map(b => `
+                                            <tr class="border-b border-zinc-100 dark:border-zinc-800" data-search="${b.title} ${b.author} ${b.id}">
+                                                <td class="p-4 font-mono">${b.id}</td>
+                                                <td class="p-4"><b>${b.title}</b><br><span class="text-xs text-zinc-500">${b.author}</span></td>
+                                                <td class="p-4 font-bold ${b.stock > 0 ? 'text-green-600' : 'text-red-500'}">${b.stock}</td>
+                                                <td class="p-4 text-right">
+                                                    <button onclick="LibraryApp.deleteBook('${b.id}')" class="text-red-500 hover:bg-red-50 p-2 rounded"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                                                </td>
+                                            </tr>
+                                        `).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                `;
+            },
+
+            htmlTeacher: function() {
+                const myReferrals = AppState.referrals.filter(r => r.teacherId === AppState.currentUser.id);
+                return `
+                 <div class="space-y-6">
+                    <header class="flex flex-col gap-6 pb-6 border-b border-black dark:border-white">
+                        <div>
+                            <h1 class="text-4xl font-light tracking-tighter">Curriculum Planning</h1>
+                            <p class="text-zinc-500 mt-2">Browse inventory and refer materials.</p>
+                        </div>
+                    </header>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        ${AppState.books.map(book => {
+                            const isLow = book.stock > 0 && book.stock < 3;
+                            return `
+                            <div class="group bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 hover:border-black dark:hover:border-white transition-colors p-6 flex flex-col justify-between h-full">
+                                <div>
+                                    <span class="text-[10px] uppercase font-bold tracking-widest text-zinc-400">${book.category}</span>
+                                    <h3 class="text-xl font-bold mt-1 leading-tight">${book.title}</h3>
+                                    <p class="text-zinc-500 text-sm mt-1">by ${book.author}</p>
+                                </div>
+                                <div class="mt-6 flex items-center justify-between border-t border-dashed border-zinc-200 dark:border-zinc-800 pt-4">
+                                    <span class="text-sm font-medium ${book.stock === 0 ? 'text-red-500' : isLow ? 'text-amber-600' : 'text-green-600'}">
+                                        ${book.stock === 0 ? 'Out of Stock' : `${book.stock} in stock`}
+                                    </span>
+                                    <button onclick="LibraryApp.openReferralModal('${book.id}')" class="px-4 py-2 text-sm font-semibold bg-zinc-100 dark:bg-zinc-800 hover:bg-black hover:text-white dark:hover:bg-white dark:hover:text-black transition-colors ${book.stock === 0 ? 'opacity-50 cursor-not-allowed' : ''}">
+                                        Refer <i data-lucide="book-open-check" class="inline w-3 h-3 ml-1"></i>
+                                    </button>
+                                </div>
+                            </div>`;
+                        }).join('')}
+                    </div>
+
+                    <div class="mt-12">
+                        <h2 class="text-xl font-bold mb-4">My Active Referrals</h2>
+                        <div class="bg-white dark:bg-black border border-zinc-200 dark:border-zinc-800 overflow-x-auto">
+                            <table class="w-full text-left">
+                                <thead class="bg-zinc-100 dark:bg-zinc-900 text-xs uppercase"><tr><th class="p-4">Book</th><th class="p-4">Target</th><th class="p-4 text-right">Action</th></tr></thead>
+                                <tbody>
+                                    ${myReferrals.length === 0 ? '<tr><td colspan="3" class="p-4 text-center text-zinc-500">No referrals yet.</td></tr>' : 
+                                      myReferrals.map(r => {
+                                          const b = AppState.books.find(bk => bk.id === r.bookId);
+                                          return `
+                                          <tr class="border-b border-zinc-100 dark:border-zinc-800">
+                                              <td class="p-4 font-bold">${b ? b.title : 'Unknown Book'}</td>
+                                              <td class="p-4 font-mono text-sm">${r.targetBranch} - Sem ${r.targetSemester}</td>
+                                              <td class="p-4 text-right">
+                                                  <button onclick="LibraryApp.deleteReferral('${r.id}')" class="text-red-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                                              </td>
+                                          </tr>`;
+                                      }).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                 </div>
+                `;
+            },
+            htmlStudent: function() {
+                const user = AppState.currentUser;
+                const myReferrals = AppState.referrals.filter(r => r.targetBranch === user.branch && r.targetSemester === user.semester);
+                const recIds = new Set(myReferrals.map(r => r.bookId));
+                
+                const recommended = AppState.books.filter(b => recIds.has(b.id));
+                const others = AppState.books.filter(b => !recIds.has(b.id));
+
+                const renderCard = (book, isRec) => {
+                    const isSaved = (user.savedBookIds || []).includes(book.id);
+                    let referrerName = '';
+                    if(isRec) {
+                        const refs = myReferrals.filter(r => r.bookId === book.id);
+                        const names = [...new Set(refs.map(r => {
+                            const t = AppState.users.find(u => u.id === r.teacherId);
+                            return t ? t.name : r.teacherId;
+                        }))];
+                        referrerName = names.join(', ');
+                    }
+
+                    return `
+                    <div onclick="LibraryApp.toggleSavedBook('${book.id}')" class="cursor-pointer relative p-6 border transition-all duration-300 hover:shadow-xl hover:scale-[1.01] flex flex-col justify-between ${isRec ? 'bg-zinc-900 text-white dark:bg-white dark:text-black border-transparent shadow-lg' : 'bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800'}">
+                         ${isRec ? `<div class="absolute -top-3 -left-3 bg-blue-600 text-white p-2 rounded-full shadow-lg z-10"><i data-lucide="bookmark" class="w-4 h-4"></i></div>` : ''}
+                         <button class="absolute top-4 right-4 p-2 rounded-full ${isSaved ? 'text-blue-500' : 'text-zinc-400'}"><i data-lucide="bookmark" class="w-5 h-5" fill="${isSaved ? 'currentColor' : 'none'}"></i></button>
+                         
+                         <div class="flex-1">
+                            <span class="text-[10px] uppercase font-bold tracking-widest opacity-60">${book.category}</span>
+                            <h3 class="text-xl font-bold mt-2 leading-tight pr-8">${book.title}</h3>
+                            <p class="text-sm mt-1 opacity-80">by ${book.author}</p>
+                            ${referrerName ? `<div class="mt-3 flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded w-fit bg-white/10 text-blue-200 dark:text-blue-600 dark:bg-black/5"><i data-lucide="user-check" class="w-3 h-3"></i> Referred by ${referrerName}</div>` : ''}
+                         </div>
+                         <div class="mt-6 pt-4 border-t border-dashed border-white/20">
+                            <div class="flex justify-between items-center text-xs font-mono uppercase">
+                                <span>Stock: ${book.stock}</span>
+                                <span class="${book.stock > 0 ? 'text-green-500' : 'text-red-500'}">${book.stock > 0 ? 'Available' : 'Unavailable'}</span>
+                            </div>
+                         </div>
+                    </div>`;
+                };
+
+                return `
+                <div class="space-y-10">
+                     <header class="border-b border-black dark:border-white pb-6">
+                        <h1 class="text-4xl font-light tracking-tighter">My Library</h1>
+                        <p class="text-zinc-500 mt-2">Welcome, <span class="font-semibold text-black dark:text-white">${user.name}</span> (${user.branch} - S${user.semester})</p>
+                    </header>
+
+                    <section>
+                        <h2 class="text-xl font-bold mb-4 flex items-center gap-2 text-blue-600"><i data-lucide="bookmark"></i> Recommended</h2>
+                        ${recommended.length > 0 ? `<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">${recommended.map(b => renderCard(b, true)).join('')}</div>` : `<div class="p-8 border border-dashed border-zinc-300 text-center text-zinc-500">No referrals yet.</div>`}
+                    </section>
+
+                    <section>
+                        <h2 class="text-xl font-bold mb-4 flex items-center gap-2 opacity-50"><i data-lucide="library"></i> All Books</h2>
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                            ${others.map(b => renderCard(b, false)).join('')}
+                        </div>
+                    </section>
+                </div>`;
+            },
+            filterTable: function(type, term = '') {
+                const table = document.getElementById(`table-${type}`);
+                if(!table) return;
+                const rows = table.querySelectorAll('tbody tr');
+                const t = term.toLowerCase();
+                rows.forEach(row => {
+                    const text = row.dataset.search.toLowerCase();
+                    row.classList.toggle('hidden', !text.includes(t));
+                });
+            },
+
+            renderModalContainer: function() {
+                const container = document.getElementById('app'); 
+                let modal = document.getElementById('modal-overlay');
+                if(modal) modal.remove();
+
+                if (AppState.modals.referral && AppState.tempData.selectedBook) {
+                    const b = AppState.tempData.selectedBook;
+                    const el = document.createElement('div');
+                    el.id = 'modal-overlay';
+                    el.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-fade-in';
+                    el.innerHTML = `
+                        <div class="bg-white dark:bg-zinc-900 w-full max-w-md border border-black dark:border-white shadow-2xl p-6 relative">
+                            <button onclick="LibraryApp.closeReferralModal()" class="absolute top-4 right-4"><i data-lucide="x"></i></button>
+                            <h2 class="text-2xl font-bold pr-8">Refer Resource</h2>
+                            <div class="mt-2 mb-6 p-3 bg-zinc-50 dark:bg-zinc-800 border-l-2 border-black dark:border-white">
+                                <p class="font-bold text-sm">${b.title}</p>
+                                <p class="text-xs text-zinc-500">${b.author}</p>
+                            </div>
+                            <div class="space-y-4">
+                                <div>
+                                    <label class="block text-xs uppercase font-bold text-zinc-500 mb-1">Target Branch</label>
+                                    <select id="ref-branch" class="w-full p-3 bg-white dark:bg-black border border-zinc-300 dark:border-zinc-700">
+                                        ${Object.values(Branch).map(br => `<option value="${br}">${br}</option>`).join('')}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-xs uppercase font-bold text-zinc-500 mb-1">Target Semester</label>
+                                    <select id="ref-sem" class="w-full p-3 bg-white dark:bg-black border border-zinc-300 dark:border-zinc-700">
+                                        ${[1,2,3,4,5,6,7,8].map(s => `<option value="${s}">Semester ${s}</option>`).join('')}
+                                    </select>
+                                </div>
+                                <button onclick="LibraryApp.submitReferral()" class="w-full bg-black text-white dark:bg-white dark:text-black py-3 font-bold uppercase hover:opacity-90 mt-4">Confirm Referral</button>
+                            </div>
+                        </div>
+                    `;
+                    document.body.appendChild(el);
+                    lucide.createIcons();
+                }
+            },
+
+            renderJotSidebar: function() {
+                let el = document.getElementById('sidebar-jot');
+                if(!el) {
+                    el = document.createElement('div');
+                    el.id = 'sidebar-jot';
+                    document.getElementById('sidebar-mount').appendChild(el);
+                }
+                
+                const isOpen = AppState.modals.jot;
+                
+                el.innerHTML = `
+                <button onclick="LibraryApp.toggleSidebar('jot')" class="fixed top-1/2 right-0 transform -translate-y-1/2 z-40 bg-black text-white dark:bg-white dark:text-black p-3 shadow-xl ${isOpen ? 'translate-x-full' : ''} border-l border-y border-white dark:border-black"><i data-lucide="pen-line"></i></button>
+                <div class="fixed top-0 right-0 h-full w-80 bg-paper dark:bg-zinc-900 border-l border-black dark:border-white z-50 transform transition-transform duration-300 shadow-2xl flex flex-col ${isOpen ? 'translate-x-0' : 'translate-x-full'}">
+                    <div class="p-4 border-b border-black dark:border-zinc-700 flex justify-between items-center bg-zinc-100 dark:bg-zinc-800">
+                        <h2 class="font-handwriting text-2xl font-bold">Jot.</h2>
+                        <button onclick="LibraryApp.toggleSidebar('jot')"><i data-lucide="chevron-right"></i></button>
+                    </div>
+                    <div class="flex-1 p-4">
+                        <textarea oninput="LibraryApp.saveNote(this.value)" class="w-full h-full bg-transparent resize-none outline-none font-handwriting text-xl leading-relaxed dark:text-zinc-300 placeholder-zinc-400" placeholder="Scribble thoughts...">${AppState.note.content}</textarea>
+                    </div>
+                    <div class="p-2 text-xs text-zinc-400 text-center border-t border-zinc-200 dark:border-zinc-800" id="jot-status">Saved</div>
+                </div>
+                ${isOpen ? `<div onclick="LibraryApp.toggleSidebar('jot')" class="fixed inset-0 bg-black/20 backdrop-blur-sm z-30"></div>` : ''}
+                `;
+                lucide.createIcons();
+            },
+
+            renderSocialSidebar: function() {
+                let el = document.getElementById('sidebar-social');
+                if(!el) {
+                    el = document.createElement('div');
+                    el.id = 'sidebar-social';
+                    document.getElementById('sidebar-mount').appendChild(el);
+                }
+                const isOpen = AppState.modals.social;
+                
+                el.innerHTML = `
+                <button onclick="LibraryApp.toggleSidebar('social')" class="fixed top-1/2 right-0 transform -translate-y-1/2 z-40 bg-black text-white dark:bg-white dark:text-black p-3 shadow-xl ${isOpen ? 'translate-x-full' : ''} border-l border-y border-white dark:border-black mt-12"><i data-lucide="message-square"></i></button>
+                <div class="fixed top-0 right-0 h-full w-96 bg-paper dark:bg-zinc-900 border-l border-black dark:border-white z-50 transform transition-transform duration-300 shadow-2xl flex flex-col ${isOpen ? 'translate-x-0' : 'translate-x-full'}">
+                    <div class="p-4 border-b border-black dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800">
+                        <div class="flex justify-between items-center mb-4">
+                            <h2 class="text-xl font-bold tracking-tight">Social Hub</h2>
+                            <button onclick="LibraryApp.toggleSidebar('social')"><i data-lucide="chevron-right"></i></button>
+                        </div>
+                        <div class="flex gap-2" id="chat-tabs">
+                            <button id="chat-tab-active" data-tab="public" class="flex-1 py-2 text-sm font-bold border rounded-md bg-black text-white dark:bg-white dark:text-black">Global Chat</button>
+                        </div>
+                    </div>
+                    <div class="flex-1 overflow-y-auto p-4 space-y-4 bg-paper dark:bg-zinc-950" id="chat-messages">
+                       <!-- Messages injected here -->
+                    </div>
+                    <div class="p-3 bg-white dark:bg-zinc-900 border-t border-zinc-200 dark:border-zinc-800 flex gap-2">
+                        <input id="chat-input" onkeydown="if(event.key==='Enter') LibraryApp.sendMessage()" placeholder="Type message..." class="flex-1 bg-zinc-100 dark:bg-zinc-800 border-none rounded-full px-4 py-2 text-sm outline-none">
+                        <button onclick="LibraryApp.sendMessage()" class="p-2 bg-black text-white dark:bg-white dark:text-black rounded-full"><i data-lucide="send" class="w-4 h-4"></i></button>
+                    </div>
+                </div>
+                ${isOpen ? `<div onclick="LibraryApp.toggleSidebar('social')" class="fixed inset-0 bg-black/20 backdrop-blur-sm z-30"></div>` : ''}
+                `;
+                
+                if(isOpen) this.renderSocialContent();
+                lucide.createIcons();
+            },
+
+            renderSocialContent: function() {
+                const container = document.getElementById('chat-messages');
+                if(!container) return;
+                
+                const msgs = AppState.messages.filter(m => m.channelId === 'global');
+                container.innerHTML = msgs.length === 0 ? '<p class="text-center text-zinc-400 text-sm mt-10">No messages yet.</p>' : 
+                msgs.map((m, i) => {
+                    const isMe = m.senderId === AppState.currentUser.id;
+                    const showName = !isMe && (i === 0 || msgs[i-1].senderId !== m.senderId);
+                    return `
+                    <div class="flex flex-col ${isMe ? 'items-end' : 'items-start'}">
+                        ${showName ? `<span class="text-[10px] font-bold text-zinc-500 mb-1 ml-1">${m.senderName}</span>` : ''}
+                        <div class="max-w-[85%] rounded-2xl p-3 shadow-sm ${isMe ? 'bg-black text-white dark:bg-white dark:text-black rounded-tr-sm' : 'bg-white text-black dark:bg-zinc-800 dark:text-white rounded-tl-sm border border-zinc-100 dark:border-zinc-700'}">
+                            ${m.attachment ? (m.attachment.type === 'image' ? `<img src="${m.attachment.url}" class="rounded-lg max-h-48 mb-2">` : `<div class="p-2 bg-white/10 rounded mb-2 text-xs">${m.attachment.name}</div>`) : ''}
+                            <p class="text-sm font-medium">${m.content}</p>
+                        </div>
+                    </div>`;
+                }).join('');
+                container.scrollTop = container.scrollHeight;
+            }
+        };
+        window.onload = function() {
+            LibraryApp.init();
+        };
+
+    </script>
+</body>
+</html>
